@@ -2,7 +2,7 @@
   "name": "meituan-api",
   "version": "1.0.0",
   "scripts": {
-    "start": "resolve.js"
+    "start": "node resolve.js"
   },
   "dependencies": {
     "express": "^4.18.2"
