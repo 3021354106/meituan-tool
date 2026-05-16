@@ -6,13 +6,26 @@ app.use((req, res, next) => {
   next();
 });
 
+// 模拟 iPhone Safari 的完整请求头
+const BROWSER_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Accept-Language': 'zh-CN,zh-Hans;q=0.9',
+  'Accept-Encoding': 'gzip, deflate, br',
+  'Connection': 'keep-alive',
+  'Referer': 'https://h5.waimai.meituan.com/'
+};
+
 app.get('/api/resolve', async (req, res) => {
   const shortUrl = req.query.url;
   if (!shortUrl) return res.status(400).json({ error: '请提供 url 参数' });
 
   try {
     // 第一步：跟随重定向拿到长链接
-    const response = await fetch(shortUrl, { redirect: 'follow' });
+    const response = await fetch(shortUrl, {
+      redirect: 'follow',
+      headers: BROWSER_HEADERS
+    });
     const longUrl = response.url;
 
     // 第二步：提取 shopId
@@ -32,14 +45,19 @@ app.get('/api/resolve', async (req, res) => {
 
     if (shopId && longUrl.includes('meituan.com')) {
       try {
+        // 动态设置 Referer 为长链接的域名
+        const pageHeaders = {
+          ...BROWSER_HEADERS,
+          'Referer': new URL(longUrl).origin + '/'
+        };
+
         const pageResp = await fetch(longUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1'
-          }
+          headers: pageHeaders,
+          redirect: 'follow'
         });
         const html = await pageResp.text();
 
-        // 尝试匹配常见的 JSON 数据块
+        // 匹配常见的 JSON 数据块
         let dataObj = null;
 
         // 格式1: window.__INITIAL_STATE__ = {...}
