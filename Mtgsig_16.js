@@ -1338,112 +1338,43 @@ function get_Sign(method, url, data, dfpid, wxstr) {
     return Mtgsig_init(dfpid, wxstr)(method, url, data)
 }
 
-
-
-// --- 封装工具函数 ---
-
-// 统一日志格式：[时间][ID] 描述信息
-const logger = (id, msg, detail = '') => {
-    const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-    console.log(`[${time}][${id}] ${msg} ${detail}`);
-};
-
-// 统一 JSON 响应封装
-const sendRes = (res, code, data) => {
-    res.writeHead(code, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(data));
-};
-
-// 异步获取请求体
-const getBody = (req) => new Promise((resolve) => {
-    let data = '';
-    req.on('data', chunk => data += chunk);
-    req.on('end', () => resolve(data));
-});
-
-const get_ip = (req) => {
-    let ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
-    if (ip.includes(',')) {
-        ip = ip.split(',')[0].trim();
+  }(y, JSON["stringify"](Cc)))),
+                            _ = he(w, o),
+                            x = re(_),
+                            S = he(new Uint8Array(te(m)), o),
+                            j = re(S),
+                            A = fe(Oe["md5ToHex"]([_, S, _ ^ r, _ ^ S ^ r])),
+                            O = de(x["concat"](j)["concat"](A));
+                        (n = {})["a1"] = kc, n["a2"] = o, n["a3"] = Dc["finger"].d(), n["a4"] = O, n["a5"] = m, n["a6"] = v, n["a7"] = Pc, n["x0"] = 3, d = S >>> 0;
+                        var C = n["a1"] + n["a2"] + n["a3"] + n["a4"] + d + g + n["a7"],
+                            I = Oe["md5Array"](new Uint8Array(te(C))),
+                            D = r << n["x0"] | r << 32 - n["x0"];
+                        return I[0] ^= D, I[1] ^= d, I[2] = I[2] ^ d ^ D, I[3] ^= I[0], n["d1"] = Oe["md5ToHex"](I), n;
+                        continue;
+                    case 1:
+                        return;
+                }
+            }()) && (n = JSON["stringify"](d), c["header"]["mtgsig"] = n);
+        }
+        return c;
     }
-    if (ip.startsWith('::ffff:')) {
-        ip = ip.substring(7);
+
+    return function (method, url, data) {
+        let data_info = {
+            "url": url,
+            "data": data,
+            "header": {},
+            "method": method,
+            "isRequest": true,
+            "useSign": true,
+            "wxNameSpace": "main",
+            "noSaftyRequest": false
+        }
+        return mtgsig(data_info, true)['header']['mtgsig']
     }
-    return ip;
+}
+function get_Sign(method, url, data, dfpid, wxstr) {
+    return Mtgsig_init(dfpid, wxstr)(method, url, data)
 }
 
-// --- 服务器逻辑 ---
-const server = http.createServer(async (req, res) => {
-    const requestId = get_ip(req)
-    const { method, url: reqUrl } = req;
-
-    // 1. 跨域与基础头
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    if (method === 'OPTIONS') return res.end();
-
-    // 2. 路由与方法校验
-    const { pathname } = new URL(reqUrl, `http://${req.headers.host}`);
-    if (method !== 'POST' || pathname !== '/api/get_16_mtgsig') {
-        return sendRes(res, 404, { success: false, error: '接口不存在' });
-    }
-
-    try {
-        // 3. 解析请求数据
-        const rawBody = await getBody(req);
-        let params;
-        try {
-            params = JSON.parse(rawBody);
-        } catch (e) {
-            return sendRes(res, 400, { success: false, error: 'JSON格式错误' });
-        }
-        logger(requestId, `入参: ${JSON.stringify(params)}`);
-        const { method: Method, url, data, a3id: a3id, wxstr} = params;
-        if (!Method || !url) {
-            return sendRes(res, 400, { success: false, error: '缺少必要参数(method/url)' });
-        }
-
-        // 4. 执行签名逻辑
-        logger(requestId, `开始处理: ${Method} ${url}`);
-        const start = Date.now();
-
-        // 调用签名函数
-        const sigResult = get_Sign(Method, url, data, a3id, wxstr);
-
-        const cost = Date.now() - start;
-        logger(requestId, `处理成功: 耗时 ${cost}ms`);
-        logger(requestId, `加密参: ${JSON.stringify(sigResult)}`);
-        // 5. 返回结果
-        sendRes(res, 200, {
-            mtgsig: sigResult,
-            requestId,
-            time: `${cost}ms`
-        });
-
-    } catch (error) {
-        logger(requestId, `服务器异常:`, error.message);
-        sendRes(res, 500, { success: false, error: '服务器内部错误' });
-    }
-});
-
-// --- 启动与生命周期管理 ---
-
-const PORT = process.env.PORT || 3005;
-server.listen(PORT, () => {
-    console.log(`
-=========================================
-   服务启动成功 | 端口: ${PORT}
-   接口地址: /api/get_16_mtgsig
-=========================================`);
-});
-
-// 优雅关闭
-const handleExit = (sig) => {
-    console.log(`收到 ${sig} 信号，关闭服务...`);
-    server.close(() => process.exit(0));
-};
-process.on('SIGINT', handleExit);
-process.on('SIGTERM', handleExit);
-process.on('uncaughtException', (err) => console.error('未捕获异常:', err));
 module.exports = { get_Sign };
