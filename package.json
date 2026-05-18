@@ -1,10 +1,10 @@
 {
-  "name": "mt-sign",
+  "name": "meituan-api",
   "version": "1.0.0",
   "scripts": {
-    "start": "node mtgsig_16.js"
+    "start": "node resolve.js"
   },
-  "engines": {
-    "node": ">=16"
+  "dependencies": {
+    "express": "^4.18.2"
   }
 }
