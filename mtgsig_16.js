@@ -1338,43 +1338,4 @@ function get_Sign(method, url, data, dfpid, wxstr) {
     return Mtgsig_init(dfpid, wxstr)(method, url, data)
 }
 
-  (y, JSON["stringify"](Cc)))),
-                            _ = he(w, o),
-                            x = re(_),
-                            S = he(new Uint8Array(te(m)), o),
-                            j = re(S),
-                            A = fe(Oe["md5ToHex"]([_, S, _ ^ r, _ ^ S ^ r])),
-                            O = de(x["concat"](j)["concat"](A));
-                        (n = {})["a1"] = kc, n["a2"] = o, n["a3"] = Dc["finger"].d(), n["a4"] = O, n["a5"] = m, n["a6"] = v, n["a7"] = Pc, n["x0"] = 3, d = S >>> 0;
-                        var C = n["a1"] + n["a2"] + n["a3"] + n["a4"] + d + g + n["a7"],
-                            I = Oe["md5Array"](new Uint8Array(te(C))),
-                            D = r << n["x0"] | r << 32 - n["x0"];
-                        return I[0] ^= D, I[1] ^= d, I[2] = I[2] ^ d ^ D, I[3] ^= I[0], n["d1"] = Oe["md5ToHex"](I), n;
-                        continue;
-                    case 1:
-                        return;
-                }
-            }()) && (n = JSON["stringify"](d), c["header"]["mtgsig"] = n);
-        }
-        return c;
-    }
-
-    return function (method, url, data) {
-        let data_info = {
-            "url": url,
-            "data": data,
-            "header": {},
-            "method": method,
-            "isRequest": true,
-            "useSign": true,
-            "wxNameSpace": "main",
-            "noSaftyRequest": false
-        }
-        return mtgsig(data_info, true)['header']['mtgsig']
-    }
-}
-function get_Sign(method, url, data, dfpid, wxstr) {
-    return Mtgsig_init(dfpid, wxstr)(method, url, data)
-}
-
 module.exports = { get_Sign };
