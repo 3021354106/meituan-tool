@@ -1446,3 +1446,4 @@ const handleExit = (sig) => {
 process.on('SIGINT', handleExit);
 process.on('SIGTERM', handleExit);
 process.on('uncaughtException', (err) => console.error('未捕获异常:', err));
+module.exports = { get_Sign };
