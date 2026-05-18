@@ -1338,7 +1338,7 @@ function get_Sign(method, url, data, dfpid, wxstr) {
     return Mtgsig_init(dfpid, wxstr)(method, url, data)
 }
 
-  }(y, JSON["stringify"](Cc)))),
+  (y, JSON["stringify"](Cc)))),
                             _ = he(w, o),
                             x = re(_),
                             S = he(new Uint8Array(te(m)), o),
