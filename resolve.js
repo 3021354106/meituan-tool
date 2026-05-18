@@ -1,34 +1,21 @@
 const express = require('express');
 const app = express();
 
+app.use(express.json());
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   next();
 });
 
-// 模拟 iPhone Safari 的完整请求头
-const BROWSER_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1',
-  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-  'Accept-Language': 'zh-CN,zh-Hans;q=0.9',
-  'Accept-Encoding': 'gzip, deflate, br',
-  'Connection': 'keep-alive',
-  'Referer': 'https://h5.waimai.meituan.com/'
-};
-
+// ========== 短链接/长链接解析 ==========
 app.get('/api/resolve', async (req, res) => {
   const shortUrl = req.query.url;
   if (!shortUrl) return res.status(400).json({ error: '请提供 url 参数' });
 
   try {
-    // 第一步：跟随重定向拿到长链接
-    const response = await fetch(shortUrl, {
-      redirect: 'follow',
-      headers: BROWSER_HEADERS
-    });
+    const response = await fetch(shortUrl, { redirect: 'follow' });
     const longUrl = response.url;
 
-    // 第二步：提取 shopId
     let shopId = null;
     let match = longUrl.match(/\/external\/poi\/([^?]+)/);
     if (match) {
@@ -38,82 +25,48 @@ app.get('/api/resolve', async (req, res) => {
       if (poiMatch) shopId = poiMatch[1];
     }
 
-    // 第三步：如果有 shopId 和长链接，尝试从长链接页面抓取店名和券额
     let shopName = null;
     let couponAmount = null;
-    let couponLimit = null;
-
-    if (shopId && longUrl.includes('meituan.com')) {
-      try {
-        // 动态设置 Referer 为长链接的域名
-        const pageHeaders = {
-          ...BROWSER_HEADERS,
-          'Referer': new URL(longUrl).origin + '/'
-        };
-
-        const pageResp = await fetch(longUrl, {
-          headers: pageHeaders,
-          redirect: 'follow'
-        });
-        const html = await pageResp.text();
-
-        // 匹配常见的 JSON 数据块
-        let dataObj = null;
-
-        // 格式1: window.__INITIAL_STATE__ = {...}
-        let stateMatch = html.match(/window\.__INITIAL_STATE__\s*=\s*({.*?});/s);
-        if (stateMatch) {
-          try { dataObj = JSON.parse(stateMatch[1]); } catch(e) {}
-        }
-
-        // 格式2: <script id="__NEXT_DATA__" type="application/json">
-        if (!dataObj) {
-          let nextDataMatch = html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*type="application\/json"[^>]*>(.*?)<\/script>/s);
-          if (nextDataMatch) {
-            try { dataObj = JSON.parse(nextDataMatch[1]); } catch(e) {}
-          }
-        }
-
-        // 格式3: 直接在文本中搜 poiBaseInfo 和 giftInfo
-        if (!dataObj) {
-          let poiMatch = html.match(/"poiBaseInfo"\s*:\s*\{[^}]*"name"\s*:\s*"([^"]+)"/);
-          if (poiMatch) shopName = poiMatch[1];
-          let couponMatch = html.match(/"coupon_amount"\s*:\s*(\d+)/);
-          if (couponMatch) couponAmount = parseInt(couponMatch[1]);
-          let limitMatch = html.match(/"order_amount_limit"\s*:\s*(\d+)/);
-          if (limitMatch) couponLimit = parseInt(limitMatch[1]);
-        }
-
-        // 如果有 JSON 对象，递归提取
-        if (dataObj && !shopName) {
-          function findPoi(obj) {
-            if (!obj || typeof obj !== 'object') return;
-            if (obj.poiBaseInfo && obj.poiBaseInfo.name) {
-              shopName = obj.poiBaseInfo.name;
-            }
-            if (obj.giftInfo && obj.giftInfo.coupon_amount) {
-              couponAmount = obj.giftInfo.coupon_amount;
-              couponLimit = obj.giftInfo.order_amount_limit || null;
-            }
-            if (shopName && couponAmount) return;
-            for (let key in obj) {
-              findPoi(obj[key]);
-              if (shopName && couponAmount) return;
-            }
-          }
-          findPoi(dataObj);
-        }
-      } catch(e) {
-        console.log('抓取店名券额失败:', e.message);
-      }
-    }
 
     res.json({
       resolved_url: longUrl,
       shopId: shopId || null,
       shopName: shopName || null,
-      couponAmount: couponAmount || null,
-      couponLimit: couponLimit || null
+      couponAmount: couponAmount || null
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ========== 小程序链接解析 ==========
+app.post('/api/xcx_resolve', async (req, res) => {
+  const { c } = req.body;
+  if (!c) return res.status(400).json({ error: '请提供小程序链接' });
+
+  try {
+    const response = await fetch('https://aj9.cn/api/_q/cq', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      body: JSON.stringify({ c })
+    });
+
+    const data = await response.json();
+
+    if (!data.ok || !data.poi) {
+      return res.status(400).json({ error: '解析失败，请确认链接正确' });
+    }
+
+    res.json({
+      shopId: data.poi,
+      shopName: data.first_poi?.name || null,
+      couponAmount: data.first_poi?.coupon_amount || null,
+      couponAmountYuan: data.first_poi?.coupon_amount_yuan || null
     });
 
   } catch (err) {
