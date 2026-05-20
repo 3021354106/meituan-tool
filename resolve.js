@@ -34,7 +34,7 @@ app.get('/api/resolve', async (req, res) => {
   }
 });
 
-// ========== 小程序链接解析（通过国内代理转发） ==========
+// ========== 小程序链接解析（带超时控制） ==========
 app.post('/api/xcx_parse', async (req, res) => {
   const { link } = req.body;
   if (!link) return res.status(400).json({ error: '请提供小程序链接' });
@@ -49,13 +49,19 @@ app.post('/api/xcx_parse', async (req, res) => {
     link: fullLink
   };
 
+  // 创建一个 AbortController，60 秒后自动取消请求
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60000);
+
   try {
-    // 通过你的国内服务器代理转发
     const resp = await fetch('http://101.200.192.193:3000', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: controller.signal
     });
+
+    clearTimeout(timeout);
 
     const data = await resp.json();
 
@@ -68,6 +74,10 @@ app.post('/api/xcx_parse', async (req, res) => {
 
     res.json({ success: true, poiIdStr, page });
   } catch (e) {
+    clearTimeout(timeout);
+    if (e.name === 'AbortError') {
+      return res.status(504).json({ error: '请求超时（60秒），请稍后重试' });
+    }
     res.status(500).json({ error: e.message });
   }
 });
