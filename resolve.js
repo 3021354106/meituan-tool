@@ -28,48 +28,36 @@ app.get('/api/resolve', async (req, res) => {
       if (poiMatch) shopId = poiMatch[1];
     }
 
-    res.json({
-      resolved_url: longUrl,
-      shopId: shopId || null
-    });
+    res.json({ resolved_url: longUrl, shopId: shopId || null });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// ========== 小程序链接解析 ==========
-const XCX_PARSE_CONFIG = {
-  api: 'http://101.200.192.193:3000',
-  type: 'idpath',
-  key: 'c2938447eca9399a2e4c27df50438bb9',
-  username: 'lyp1014520@163.com',
-  appid: 'wxde8ac0a21135c07d'
-};
-
+// ========== 小程序链接解析（通过国内代理转发） ==========
 app.post('/api/xcx_parse', async (req, res) => {
   const { link } = req.body;
   if (!link) return res.status(400).json({ error: '请提供小程序链接' });
 
   const fullLink = link.startsWith('#小程序://') ? link : `#小程序://${link}`;
-  console.log('[XCX_PARSE] 收到链接:', fullLink);
 
   const payload = {
-    type: XCX_PARSE_CONFIG.type,
-    key: XCX_PARSE_CONFIG.key,
-    username: XCX_PARSE_CONFIG.username,
-    appid: XCX_PARSE_CONFIG.appid,
+    type: 'idpath',
+    key: 'c2938447eca9399a2e4c27df50438bb9',
+    username: 'lyp1014520@163.com',
+    appid: 'wxde8ac0a21135c07d',
     link: fullLink
   };
 
   try {
-    const resp = await fetch(XCX_PARSE_CONFIG.api, {
+    // 通过你的国内服务器代理转发
+    const resp = await fetch('http://101.200.192.193:3000', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
 
     const data = await resp.json();
-    console.log('[XCX_PARSE] 返回数据:', JSON.stringify(data));
 
     if (data.code !== 200) {
       return res.status(400).json({ error: data.msg || '解析失败', detail: data });
@@ -77,11 +65,9 @@ app.post('/api/xcx_parse', async (req, res) => {
 
     const page = data.data?.page || '';
     const poiIdStr = page.match(/poi_id_str=([^&]+)/)?.[1] || null;
-    console.log('[XCX_PARSE] 提取到的 poi_id_str:', poiIdStr);
 
-    res.json({ success: true, appid: data.data?.appid || null, page, poiIdStr });
+    res.json({ success: true, poiIdStr, page });
   } catch (e) {
-    console.error('[XCX_PARSE] 异常:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
