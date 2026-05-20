@@ -34,7 +34,7 @@ app.get('/api/resolve', async (req, res) => {
   }
 });
 
-// ========== 小程序链接解析（通过 Cloudflare HTTPS 代理） ==========
+// ========== 小程序链接解析 ==========
 app.post('/api/xcx_parse', async (req, res) => {
   const { link } = req.body;
   if (!link) return res.status(400).json({ error: '请提供小程序链接' });
