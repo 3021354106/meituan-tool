@@ -18,7 +18,6 @@ const WECHAT_TOKEN = 'yichen2026';
 
 const SCHEME_TEMPLATE = 'imeituan://www.meituan.com/web?url=https%3A%2F%2Foffsiteact.meituan.com%2Fweb%2Fhoae%2Fcollection_waimai_v8%2Findex.html%3FrecallBizId%3DcpsH5Coupon%26bizId%3D0c3bfd35279b4140b3bd8ecbc41301d6%26mediumSrc1%3D0c3bfd35279b4140b3bd8ecbc41301d6%26scene%3DCPS_SELF_SRC%26pageSrc1%3DCPS_SELF_OUT_SRC_H5_LINK%26pageSrc2%3D0c3bfd35279b4140b3bd8ecbc41301d6%26pageSrc3%3Dcf43b6387dd545a58222aba9ae1d7a2d%26activityId%3D6%26mediaPvId%3Ddafkdsajffjafdfs%26mediaUserId%3D10086%26outActivityId%3D6%26hoaePageV%3D8%26p%3D554c02ac6c2a4108b162afc11bb6e6c6%26poi_id_str%3D{SHOP_ID}';
 
-// 🆕 生成北京时间字符串
 function getBeijingTime() {
   const now = new Date();
   const beijingTime = new Date(now.getTime() + 8 * 60 * 60 * 1000);
@@ -42,6 +41,11 @@ async function logToProxy(record) {
 app.get('/api/resolve', async (req, res) => {
   const shortUrl = req.query.url;
   if (!shortUrl) return res.status(400).json({ error: '请提供 url 参数' });
+
+  // 🆕 保活请求跳过日志记录
+  if (shortUrl.includes('dpurl.cn/test')) {
+    return res.json({ resolved_url: '', shopId: 'keepalive' });
+  }
 
   const startTime = getBeijingTime();
 
