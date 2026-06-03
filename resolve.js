@@ -45,7 +45,6 @@ app.get('/api/resolve', async (req, res) => {
   const shortUrl = req.query.url;
   if (!shortUrl) return res.status(400).json({ error: '请提供 url 参数' });
 
-  // 🆕 保活请求直接返回，不进行任何外部请求
   if (shortUrl.includes('dpurl.cn/test')) {
     return res.json({ resolved_url: '', shopId: 'keepalive' });
   }
@@ -53,7 +52,6 @@ app.get('/api/resolve', async (req, res) => {
   const startTime = getBeijingTime();
 
   try {
-    // 🆕 用 AbortController 设置10秒超时
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
 
@@ -219,7 +217,7 @@ app.post('/wechat', async (req, res) => {
 ② 再领商家隐藏券（可切号）
 👉 <a href="${activityUrl}">点击领取内部商家券</a>
 
-④ 最后领津贴
+③ 最后领津贴
 👉 <a href="${jintieLink}">点击领取津贴</a>
 
 💡使用提示：
