@@ -19,7 +19,6 @@ const WECHAT_TOKEN = 'yichen2026';
 const SCHEME_TEMPLATE = 'imeituan://www.meituan.com/web?url=https%3A%2F%2Foffsiteact.meituan.com%2Fweb%2Fhoae%2Fcollection_waimai_v8%2Findex.html%3FrecallBizId%3DcpsH5Coupon%26bizId%3D0c3bfd35279b4140b3bd8ecbc41301d6%26mediumSrc1%3D0c3bfd35279b4140b3bd8ecbc41301d6%26scene%3DCPS_SELF_SRC%26pageSrc1%3DCPS_SELF_OUT_SRC_H5_LINK%26pageSrc2%3D0c3bfd35279b4140b3bd8ecbc41301d6%26pageSrc3%3Dcf43b6387dd545a58222aba9ae1d7a2d%26activityId%3D6%26mediaPvId%3Ddafkdsajffjafdfs%26mediaUserId%3D10086%26outActivityId%3D6%26hoaePageV%3D8%26p%3D554c02ac6c2a4108b162afc11bb6e6c6%26poi_id_str%3D{SHOP_ID}';
 
 const HONGBAO_H5_URL = 'https://click.meituan.com/t?t=1&c=2&p=y2Pp-bxzOzyq';
-const JINTIE_XCX_LINK = '#小程序://美团外卖丨外卖美食奶茶咖啡水果/p1WPEHG7QEU14Hi';
 const MEITUAN_APPID = 'wxde8ac0a21135c07d';
 
 function getBeijingTime() {
@@ -203,7 +202,14 @@ app.post('/wechat', async (req, res) => {
     const activityUrl = match ? decodeURIComponent(match[1]) : jumpUrl;
 
     const hongbaoLink = HONGBAO_H5_URL;
-    const jintieLink = JINTIE_XCX_LINK;
+
+    // 免登录入口：直接唤起美团外卖小程序的商家详情页
+    const freeLoginPath = `packages/restaurant/restaurant/restaurant?poi_id_str=${shopId}`;
+    const freeLoginScheme = `weixin://dl/business/?appid=${MEITUAN_APPID}&path=${encodeURIComponent(freeLoginPath)}&query=poi_id_str=${encodeURIComponent(shopId)}`;
+
+    // 津贴入口：同样用商家详情页唤起
+    const jintiePath = `packages/restaurant/restaurant/restaurant?poi_id_str=${shopId}`;
+    const jintieScheme = `weixin://dl/business/?appid=${MEITUAN_APPID}&path=${encodeURIComponent(jintiePath)}&query=poi_id_str=${encodeURIComponent(shopId)}`;
 
     const replyText = `✔ 美团外卖商家券匹配成功 ✔
 
@@ -217,8 +223,11 @@ app.post('/wechat', async (req, res) => {
 ② 再领商家隐藏券（可切号）
 👉 <a href="${activityUrl}">点击领取内部商家券</a>
 
-③ 最后领津贴
-👉 <a href="${jintieLink}">点击领取津贴</a>
+③ 免登录入口
+👉 <a href="${freeLoginScheme}">点击免登录领券</a>
+
+④ 最后领津贴
+👉 <a href="${jintieScheme}">点击领取津贴</a>
 
 💡使用提示：
 搜索对应店铺，能搜到就叠加津贴下单；搜不到就直接用红包+商家券下单。`;
