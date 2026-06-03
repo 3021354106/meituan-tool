@@ -123,7 +123,6 @@ app.post('/api/xcx_parse', async (req, res) => {
     }
     const page = data.data?.page || '';
     const poiIdStr = page.match(/poi_id_str=([^&]+)/)?.[1] || null;
-    // 🆕 同时返回原始 page 路径，供公众号免登录入口使用
     res.json({ success: true, poiIdStr, page });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -177,7 +176,6 @@ app.post('/wechat', async (req, res) => {
     }
 
     let shopId = null;
-    let pagePath = null; // 🆕 保存卖家 API 返回的真实页面路径
 
     if (extracted.type === 'xcx') {
       const resp = await fetch('https://meituan-tool.onrender.com/api/xcx_parse', {
@@ -187,15 +185,10 @@ app.post('/wechat', async (req, res) => {
       });
       const data = await resp.json();
       shopId = data.poiIdStr || null;
-      pagePath = data.page || null; // 🆕 拿到真实路径
     } else {
       const resp = await fetch(`https://meituan-tool.onrender.com/api/resolve?url=${encodeURIComponent(extracted.url)}`);
       const data = await resp.json();
       shopId = data.shopId || null;
-      // 短链接/长链接没有 pagePath，只能自己拼
-      if (shopId) {
-        pagePath = `packages/restaurant/restaurant/restaurant?poi_id_str=${shopId}`;
-      }
     }
 
     if (!shopId) {
@@ -210,10 +203,9 @@ app.post('/wechat', async (req, res) => {
 
     const hongbaoLink = HONGBAO_H5_URL;
 
-    // 🆕 免登录入口和津贴入口：使用卖家 API 返回的真实路径
-    const freeLoginScheme = pagePath 
-      ? `weixin://dl/business/?appid=${MEITUAN_APPID}&path=${encodeURIComponent(pagePath)}&query=poi_id_str=${encodeURIComponent(shopId)}`
-      : `weixin://dl/business/?appid=${MEITUAN_APPID}&path=${encodeURIComponent(`packages/restaurant/restaurant/restaurant?poi_id_str=${shopId}`)}&query=poi_id_str=${encodeURIComponent(shopId)}`;
+    // 🆕 免登录入口：用 web-view + 你的活动页链接，和别人一模一样的格式
+    const webviewPath = `pages/web-view/web-view.html?type=DIRECT&webviewUrl=${encodeURIComponent(activityUrl)}`;
+    const base64Path = Buffer.from(webviewPath).toString('base64');
 
     const replyText = `✔ 美团外卖商家券匹配成功 ✔
 
@@ -228,10 +220,10 @@ app.post('/wechat', async (req, res) => {
 👉 <a href="${activityUrl}">点击领取内部商家券</a>
 
 ③ 免登录入口
-👉 <a href="${freeLoginScheme}">点击免登录领券</a>
+👉 <a data-miniprogram-appid="${MEITUAN_APPID}" data-miniprogram-path="${base64Path}" href=" ">小程序领取通道(免登录)</a>
 
 ④ 最后领津贴
-👉 <a href="${freeLoginScheme}">点击领取津贴</a>
+👉 <a href="mp://2DOWIIKX4PkiG3v">点击领取津贴</a>
 
 💡使用提示：
 搜索对应店铺，能搜到就叠加津贴下单；搜不到就直接用红包+商家券下单。`;
