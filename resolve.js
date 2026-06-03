@@ -18,6 +18,18 @@ const WECHAT_TOKEN = 'yichen2026';
 
 const SCHEME_TEMPLATE = 'imeituan://www.meituan.com/web?url=https%3A%2F%2Foffsiteact.meituan.com%2Fweb%2Fhoae%2Fcollection_waimai_v8%2Findex.html%3FrecallBizId%3DcpsH5Coupon%26bizId%3D0c3bfd35279b4140b3bd8ecbc41301d6%26mediumSrc1%3D0c3bfd35279b4140b3bd8ecbc41301d6%26scene%3DCPS_SELF_SRC%26pageSrc1%3DCPS_SELF_OUT_SRC_H5_LINK%26pageSrc2%3D0c3bfd35279b4140b3bd8ecbc41301d6%26pageSrc3%3Dcf43b6387dd545a58222aba9ae1d7a2d%26activityId%3D6%26mediaPvId%3Ddafkdsajffjafdfs%26mediaUserId%3D10086%26outActivityId%3D6%26hoaePageV%3D8%26p%3D554c02ac6c2a4108b162afc11bb6e6c6%26poi_id_str%3D{SHOP_ID}';
 
+// 免登录商家券小程序路径
+const MINI_PATH_FREE_LOGIN = '/waimai/pages/web-view/web-view?type=REDIRECT&webviewUrl=https%3A%2F%2Foffsiteact.meituan.com%2Fact%2Fcps%2Fpromotion%3Fp%3D554c02ac6c2a4108b162afc11bb6e6c6&utm_content=0c3bfd35279b4140b3bd8ecbc41301d6__cf43b6387dd545a58222aba9ae1d7a2d';
+
+// 通用红包 H5 链接
+const HONGBAO_H5_URL = 'https://click.meituan.com/t?t=1&c=2&p=y2Pp-bxzOzyq';
+
+// 津贴链接（待解析后替换）
+const JINTIE_XCX_LINK = '#小程序://美团外卖丨外卖美食奶茶咖啡水果/p1WPEHG7QEU14Hi';
+
+// 美团外卖小程序 AppID
+const MEITUAN_APPID = 'wxde8ac0a21135c07d';
+
 function getBeijingTime() {
   const now = new Date();
   const beijingTime = new Date(now.getTime() + 8 * 60 * 60 * 1000);
@@ -42,7 +54,6 @@ app.get('/api/resolve', async (req, res) => {
   const shortUrl = req.query.url;
   if (!shortUrl) return res.status(400).json({ error: '请提供 url 参数' });
 
-  // 保活请求跳过日志记录
   if (shortUrl.includes('dpurl.cn/test')) {
     return res.json({ resolved_url: '', shopId: 'keepalive' });
   }
@@ -55,38 +66,28 @@ app.get('/api/resolve', async (req, res) => {
 
     let shopId = null;
     let match = longUrl.match(/\/external\/poi\/([^?]+)/);
-    if (match) {
-      shopId = match[1];
-    } else {
+    if (match) shopId = match[1];
+    else {
       let poiMatch = longUrl.match(/poi_id_str=([^&]+)/);
       if (poiMatch) shopId = poiMatch[1];
     }
 
-    // 记录成功日志
     logToProxy({
-      time: startTime,
-      link: shortUrl,
+      time: startTime, link: shortUrl,
       shop_id: shopId || '未获取',
       status: shopId ? '成功' : '失败',
-      error: shopId ? '' : '未找到商家ID',
-      balance: '',
+      error: shopId ? '' : '未找到商家ID', balance: '',
       code: shopId ? 200 : 400
     });
 
     res.json({ resolved_url: longUrl, shopId: shopId || null });
   } catch (err) {
-    // 记录失败日志
     logToProxy({
-      time: startTime,
-      link: shortUrl,
-      shop_id: '未获取',
-      status: '失败',
-      error: err.message,
-      detail: err.stack || err.message,
-      balance: '',
-      code: 0
+      time: startTime, link: shortUrl,
+      shop_id: '未获取', status: '失败',
+      error: err.message, detail: err.stack || err.message,
+      balance: '', code: 0
     });
-
     res.status(500).json({ error: err.message });
   }
 });
@@ -112,16 +113,12 @@ app.post('/api/xcx_parse', async (req, res) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-
     const data = await resp.json();
-
     if (data.code !== 200) {
       return res.status(400).json({ error: data.msg || '解析失败', detail: data });
     }
-
     const page = data.data?.page || '';
     const poiIdStr = page.match(/poi_id_str=([^&]+)/)?.[1] || null;
-
     res.json({ success: true, poiIdStr, page });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -157,12 +154,8 @@ app.get('/wechat', (req, res) => {
   const { signature, timestamp, nonce, echostr } = req.query;
   const arr = [WECHAT_TOKEN, timestamp, nonce].sort();
   const sha1 = crypto.createHash('sha1').update(arr.join('')).digest('hex');
-
-  if (sha1 === signature) {
-    res.send(echostr);
-  } else {
-    res.send('fail');
-  }
+  if (sha1 === signature) res.send(echostr);
+  else res.send('fail');
 });
 
 app.post('/wechat', async (req, res) => {
@@ -173,13 +166,13 @@ app.post('/wechat', async (req, res) => {
     const content = (xml.match(/<Content><!\[CDATA\[(.*?)\]\]><\/Content>/) || [])[1] || '';
 
     const extracted = extractLink(content);
-
     if (!extracted) {
       const reply = buildTextReply(fromUser, toUser, '未识别到有效链接，请发送：\ndpurl.cn 短链接\n或 #小程序://... 小程序链接\n或 meituan.com 长链接');
       return res.type('xml').send(reply);
     }
 
     let shopId = null;
+    let shopName = null;
 
     if (extracted.type === 'xcx') {
       const resp = await fetch('https://meituan-tool.onrender.com/api/xcx_parse', {
@@ -200,12 +193,37 @@ app.post('/wechat', async (req, res) => {
       return res.type('xml').send(reply);
     }
 
+    const displayName = shopName || '该商家';
     const jumpUrl = SCHEME_TEMPLATE.replace('{SHOP_ID}', shopId);
-    // 🆕 从 imeituan:// 链接里提取活动页 URL，适配微信环境
     const match = jumpUrl.match(/url=([^&]*)/);
     const activityUrl = match ? decodeURIComponent(match[1]) : jumpUrl;
-    
-    const replyText = `✅ 解析成功！\n\n<a href="${activityUrl}">🚀 点击跳转领券</a>\n\n📎 若未唤起App，请复制链接到浏览器打开。`;
+
+    const hongbaoLink = HONGBAO_H5_URL;
+    const freeLoginPath = MINI_PATH_FREE_LOGIN;
+    const jintieLink = JINTIE_XCX_LINK;
+
+    const replyText = `✔ 美团外卖商家券匹配成功 ✔
+
+🎫 ${displayName}已为您匹配到商家券!!
+
+🔥推荐按顺序领取，能叠加更省👇
+
+① 先领通用红包
+👉 <a href="${hongbaoLink}">点击领取通用红包</a>
+
+② 再领商家隐藏券（可切号）
+👉 <a href="${activityUrl}">点击领取内部商家券</a>
+
+③ 免登录入口
+👉 <a href="weixin://dl/business/?appid=${MEITUAN_APPID}&path=${encodeURIComponent(freeLoginPath)}">点击免登录领券</a>
+
+④ 最后领津贴
+👉 <a href="${jintieLink}">点击领取津贴</a>
+
+💡使用提示：
+搜索对应店铺，能搜到就叠加津贴下单；搜不到就直接用红包+商家券下单。
+
+⭐ <a href="weixin://bizmsgmenu?msgmenucontent=收藏%23${shopId}%23${encodeURIComponent(displayName)}&msgmenuid=1">收藏此店</a> | 📁 <a href="weixin://bizmsgmenu?msgmenucontent=我的收藏&msgmenuid=1">我的收藏夹</a>`;
 
     const reply = buildTextReply(fromUser, toUser, replyText);
     res.type('xml').send(reply);
