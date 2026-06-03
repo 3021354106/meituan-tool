@@ -19,8 +19,10 @@ const WECHAT_TOKEN = 'yichen2026';
 const SCHEME_TEMPLATE = 'imeituan://www.meituan.com/web?url=https%3A%2F%2Foffsiteact.meituan.com%2Fweb%2Fhoae%2Fcollection_waimai_v8%2Findex.html%3FrecallBizId%3DcpsH5Coupon%26bizId%3D0c3bfd35279b4140b3bd8ecbc41301d6%26mediumSrc1%3D0c3bfd35279b4140b3bd8ecbc41301d6%26scene%3DCPS_SELF_SRC%26pageSrc1%3DCPS_SELF_OUT_SRC_H5_LINK%26pageSrc2%3D0c3bfd35279b4140b3bd8ecbc41301d6%26pageSrc3%3Dcf43b6387dd545a58222aba9ae1d7a2d%26activityId%3D6%26mediaPvId%3Ddafkdsajffjafdfs%26mediaUserId%3D10086%26outActivityId%3D6%26hoaePageV%3D8%26p%3D554c02ac6c2a4108b162afc11bb6e6c6%26poi_id_str%3D{SHOP_ID}';
 
 const HONGBAO_H5_URL = 'https://click.meituan.com/t?t=1&c=2&p=y2Pp-bxzOzyq';
-// 美团外卖小程序 AppID（和微信开放平台里的一致）
-const MEITUAN_APPID = 'wx2c348cf579062e56';
+
+// 🆕 你用邀请码生成的真实小程序信息
+const MY_APPID = 'wxde8ac0a21135c07d';
+const MY_MINI_PATH = '/waimai/pages/web-view/web-view?type=REDIRECT&webviewUrl=https%3A%2F%2Foffsiteact.meituan.com%2Fact%2Fcps%2Fpromotion%3Fp%3D554c02ac6c2a4108b162afc11bb6e6c6&utm_content=0c3bfd35279b4140b3bd8ecbc41301d6__cf43b6387dd545a58222aba9ae1d7a2d';
 
 function getBeijingTime() {
   const now = new Date();
@@ -204,9 +206,8 @@ app.post('/wechat', async (req, res) => {
 
     const hongbaoLink = HONGBAO_H5_URL;
 
-    // 🆕 免登录入口：用你自己的活动页链接拼出和别人一模一样的 web-view 路径
-    const webviewPath = `pages/web-view/web-view.html?type=DIRECT&webviewUrl=${encodeURIComponent(activityUrl)}`;
-    const base64Path = Buffer.from(webviewPath).toString('base64');
+    // 🆕 免登录和津贴都用你的真实小程序路径，用 weixin://dl/business/ 唤起
+    const miniScheme = `weixin://dl/business/?appid=${MY_APPID}&path=${encodeURIComponent(MY_MINI_PATH)}`;
 
     const replyText = `✔ 美团外卖商家券匹配成功 ✔
 
@@ -220,11 +221,11 @@ app.post('/wechat', async (req, res) => {
 ② 再领商家隐藏券（可切号）
 👉 <a href="${activityUrl}">点击领取内部商家券</a>
 
-③ 免登录入口
-👉 <a data-miniprogram-appid="${MEITUAN_APPID}" data-miniprogram-path="${base64Path}" href=" ">小程序领取通道(免登录)</a>
+③ 🟢 免登录入口
+👉 ${miniScheme}
 
-④ 最后领津贴
-👉 <a href="mp://2DOWIIKX4PkiG3v">点击领取津贴</a>
+④ 🟢 最后领津贴
+👉 ${miniScheme}
 
 💡使用提示：
 搜索对应店铺，能搜到就叠加津贴下单；搜不到就直接用红包+商家券下单。`;
