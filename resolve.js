@@ -15,11 +15,46 @@ app.use((req, res, next) => {
 });
 
 const WECHAT_TOKEN = 'yichen2026';
+const WECHAT_APPID = 'wx3d10870b8ae115a4';
+const WECHAT_SECRET = 'cfb500364c0abfe182f4b124c92b02c5';
 
 const SCHEME_TEMPLATE = 'imeituan://www.meituan.com/web?url=https%3A%2F%2Foffsiteact.meituan.com%2Fweb%2Fhoae%2Fcollection_waimai_v8%2Findex.html%3FrecallBizId%3DcpsH5Coupon%26bizId%3D0c3bfd35279b4140b3bd8ecbc41301d6%26mediumSrc1%3D0c3bfd35279b4140b3bd8ecbc41301d6%26scene%3DCPS_SELF_SRC%26pageSrc1%3DCPS_SELF_OUT_SRC_H5_LINK%26pageSrc2%3D0c3bfd35279b4140b3bd8ecbc41301d6%26pageSrc3%3Dcf43b6387dd545a58222aba9ae1d7a2d%26activityId%3D6%26mediaPvId%3Ddafkdsajffjafdfs%26mediaUserId%3D10086%26outActivityId%3D6%26hoaePageV%3D8%26p%3D554c02ac6c2a4108b162afc11bb6e6c6%26poi_id_str%3D{SHOP_ID}';
 
 const HONGBAO_H5_URL = 'https://click.meituan.com/t?t=1&c=2&p=y2Pp-bxzOzyq';
 const MEITUAN_APPID = 'wxde8ac0a21135c07d';
+
+// 🆕 缓存 access_token，避免频繁请求
+let cachedToken = null;
+let tokenExpireTime = 0;
+
+async function getAccessToken() {
+  if (cachedToken && Date.now() < tokenExpireTime) {
+    return cachedToken;
+  }
+  const resp = await fetch(`https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${WECHAT_APPID}&secret=${WECHAT_SECRET}`);
+  const data = await resp.json();
+  if (data.access_token) {
+    cachedToken = data.access_token;
+    tokenExpireTime = Date.now() + (data.expires_in - 300) * 1000; // 提前5分钟过期
+    return cachedToken;
+  }
+  throw new Error('获取 access_token 失败: ' + JSON.stringify(data));
+}
+
+// 🆕 发送客服消息
+async function sendCustomMessage(openid, content) {
+  const token = await getAccessToken();
+  const resp = await fetch(`https://api.weixin.qq.com/cgi-bin/message/custom/send?access_token=${token}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      touser: openid,
+      msgtype: 'text',
+      text: { content: content }
+    })
+  });
+  return resp.json();
+}
 
 function getBeijingTime() {
   const now = new Date();
@@ -175,25 +210,30 @@ app.post('/wechat', async (req, res) => {
       return res.type('xml').send(reply);
     }
 
+    // 🆕 先回复一个“正在处理”，防止微信超时
+    const reply = buildTextReply(fromUser, toUser, '正在为您查询，请稍候...');
+    res.type('xml').send(reply);
+
+    // 然后异步处理并发送客服消息
     let shopId = null;
 
     if (extracted.type === 'xcx') {
-      const resp = await fetch('https://meituan-tool.onrender.com/api/xcx_parse', {
+      const xcxResp = await fetch('https://meituan-tool.onrender.com/api/xcx_parse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ link: extracted.url })
       });
-      const data = await resp.json();
+      const data = await xcxResp.json();
       shopId = data.poiIdStr || null;
     } else {
-      const resp = await fetch(`https://meituan-tool.onrender.com/api/resolve?url=${encodeURIComponent(extracted.url)}`);
-      const data = await resp.json();
+      const resolveResp = await fetch(`https://meituan-tool.onrender.com/api/resolve?url=${encodeURIComponent(extracted.url)}`);
+      const data = await resolveResp.json();
       shopId = data.shopId || null;
     }
 
     if (!shopId) {
-      const reply = buildTextReply(fromUser, toUser, '解析失败，请确认链接正确且未过期。');
-      return res.type('xml').send(reply);
+      await sendCustomMessage(fromUser, '解析失败，请确认链接正确且未过期。');
+      return;
     }
 
     const displayName = '该商家';
@@ -203,7 +243,7 @@ app.post('/wechat', async (req, res) => {
 
     const hongbaoLink = HONGBAO_H5_URL;
 
-    // 🆕 免登录入口：用 web-view + 你的活动页链接，和别人一模一样的格式
+    // 免登录入口：用 web-view
     const webviewPath = `pages/web-view/web-view.html?type=DIRECT&webviewUrl=${encodeURIComponent(activityUrl)}`;
     const base64Path = Buffer.from(webviewPath).toString('base64');
 
@@ -228,17 +268,18 @@ app.post('/wechat', async (req, res) => {
 💡使用提示：
 搜索对应店铺，能搜到就叠加津贴下单；搜不到就直接用红包+商家券下单。`;
 
-    const reply = buildTextReply(fromUser, toUser, replyText);
-    res.type('xml').send(reply);
+    await sendCustomMessage(fromUser, replyText);
 
   } catch (e) {
-    const toUser = (req.body?.match(/<ToUserName><!\[CDATA\[(.*?)\]\]><\/ToUserName>/) || [])[1] || '';
+    console.error('[WECHAT] 错误:', e.message);
     const fromUser = (req.body?.match(/<FromUserName><!\[CDATA\[(.*?)\]\]><\/FromUserName>/) || [])[1] || '';
-    if (fromUser && toUser) {
-      const reply = buildTextReply(fromUser, toUser, '服务暂时异常，请稍后重试。');
-      return res.type('xml').send(reply);
+    if (fromUser) {
+      try {
+        await sendCustomMessage(fromUser, '服务暂时异常，请稍后重试。');
+      } catch (err) {
+        console.error('[WECHAT] 发送错误消息失败:', err.message);
+      }
     }
-    res.send('success');
   }
 });
 
