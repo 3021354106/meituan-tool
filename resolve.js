@@ -42,7 +42,7 @@ app.get('/api/resolve', async (req, res) => {
   const shortUrl = req.query.url;
   if (!shortUrl) return res.status(400).json({ error: '请提供 url 参数' });
 
-  // 🆕 保活请求跳过日志记录
+  // 保活请求跳过日志记录
   if (shortUrl.includes('dpurl.cn/test')) {
     return res.json({ resolved_url: '', shopId: 'keepalive' });
   }
@@ -175,7 +175,7 @@ app.post('/wechat', async (req, res) => {
     const extracted = extractLink(content);
 
     if (!extracted) {
-      const reply = buildTextReply(fromUser, toUser, '未识别到有效链接');
+      const reply = buildTextReply(fromUser, toUser, '未识别到有效链接，请发送：\ndpurl.cn 短链接\n或 #小程序://... 小程序链接\n或 meituan.com 长链接');
       return res.type('xml').send(reply);
     }
 
@@ -201,7 +201,11 @@ app.post('/wechat', async (req, res) => {
     }
 
     const jumpUrl = SCHEME_TEMPLATE.replace('{SHOP_ID}', shopId);
-    const replyText = `✅ 解析成功！\n\n📎 点击下方链接领取叠加券：\n${jumpUrl}`;
+    // 🆕 从 imeituan:// 链接里提取活动页 URL，适配微信环境
+    const match = jumpUrl.match(/url=([^&]*)/);
+    const activityUrl = match ? decodeURIComponent(match[1]) : jumpUrl;
+    
+    const replyText = `✅ 解析成功！\n\n<a href="${activityUrl}">🚀 点击跳转领券</a>\n\n📎 若未唤起App，请复制链接到浏览器打开。`;
 
     const reply = buildTextReply(fromUser, toUser, replyText);
     res.type('xml').send(reply);
