@@ -19,10 +19,7 @@ const WECHAT_TOKEN = 'yichen2026';
 const SCHEME_TEMPLATE = 'imeituan://www.meituan.com/web?url=https%3A%2F%2Foffsiteact.meituan.com%2Fweb%2Fhoae%2Fcollection_waimai_v8%2Findex.html%3FrecallBizId%3DcpsH5Coupon%26bizId%3D0c3bfd35279b4140b3bd8ecbc41301d6%26mediumSrc1%3D0c3bfd35279b4140b3bd8ecbc41301d6%26scene%3DCPS_SELF_SRC%26pageSrc1%3DCPS_SELF_OUT_SRC_H5_LINK%26pageSrc2%3D0c3bfd35279b4140b3bd8ecbc41301d6%26pageSrc3%3Dcf43b6387dd545a58222aba9ae1d7a2d%26activityId%3D6%26mediaPvId%3Ddafkdsajffjafdfs%26mediaUserId%3D10086%26outActivityId%3D6%26hoaePageV%3D8%26p%3D554c02ac6c2a4108b162afc11bb6e6c6%26poi_id_str%3D{SHOP_ID}';
 
 const HONGBAO_H5_URL = 'https://click.meituan.com/t?t=1&c=2&p=y2Pp-bxzOzyq';
-
-// 🆕 你用邀请码生成的真实小程序信息
-const MY_APPID = 'wxde8ac0a21135c07d';
-const MY_MINI_PATH = '/waimai/pages/web-view/web-view?type=REDIRECT&webviewUrl=https%3A%2F%2Foffsiteact.meituan.com%2Fact%2Fcps%2Fpromotion%3Fp%3D554c02ac6c2a4108b162afc11bb6e6c6&utm_content=0c3bfd35279b4140b3bd8ecbc41301d6__cf43b6387dd545a58222aba9ae1d7a2d';
+const MEITUAN_APPID = 'wxde8ac0a21135c07d';
 
 function getBeijingTime() {
   const now = new Date();
@@ -40,6 +37,17 @@ async function logToProxy(record) {
   } catch (e) {
     console.error('[LOG] 写入日志失败:', e.message);
   }
+}
+
+// 从小程序链接中提取最后一段标识符
+function extractShortCode(xcxUrl) {
+  const parts = xcxUrl.split('/');
+  return parts[parts.length - 1];
+}
+
+// 🆕 根据 poi_id_str 生成小程序路径（商家详情页）
+function buildMiniPath(shopId) {
+  return `packages/restaurant/restaurant/restaurant?poi_id_str=${shopId}`;
 }
 
 // ========== 短链接/长链接解析 ==========
@@ -179,8 +187,13 @@ app.post('/wechat', async (req, res) => {
     }
 
     let shopId = null;
+    let mpLink = null;
 
     if (extracted.type === 'xcx') {
+      // 🆕 小程序链接：提取标识符生成 mp:// 链接
+      const shortCode = extractShortCode(extracted.url);
+      mpLink = `mp://${shortCode}`;
+
       const resp = await fetch('https://meituan-tool.onrender.com/api/xcx_parse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -189,9 +202,15 @@ app.post('/wechat', async (req, res) => {
       const data = await resp.json();
       shopId = data.poiIdStr || null;
     } else {
+      // 🆕 短链接/长链接：解析后生成 weixin://dl/business/ 小程序唤起链接
       const resp = await fetch(`https://meituan-tool.onrender.com/api/resolve?url=${encodeURIComponent(extracted.url)}`);
       const data = await resp.json();
       shopId = data.shopId || null;
+
+      if (shopId) {
+        const miniPath = buildMiniPath(shopId);
+        mpLink = `weixin://dl/business/?appid=${MEITUAN_APPID}&path=${encodeURIComponent(miniPath)}`;
+      }
     }
 
     if (!shopId) {
@@ -206,9 +225,6 @@ app.post('/wechat', async (req, res) => {
 
     const hongbaoLink = HONGBAO_H5_URL;
 
-    // 🆕 免登录和津贴都用你的真实小程序路径，用 weixin://dl/business/ 唤起
-    const miniScheme = `weixin://dl/business/?appid=${MY_APPID}&path=${encodeURIComponent(MY_MINI_PATH)}`;
-
     const replyText = `✔ 美团外卖商家券匹配成功 ✔
 
 🎫 ${displayName}已为您匹配到商家券!!
@@ -222,10 +238,10 @@ app.post('/wechat', async (req, res) => {
 👉 <a href="${activityUrl}">点击领取内部商家券</a>
 
 ③ 🟢 免登录入口
-👉 ${miniScheme}
+👉 ${mpLink}
 
 ④ 🟢 最后领津贴
-👉 ${miniScheme}
+👉 ${mpLink}
 
 💡使用提示：
 搜索对应店铺，能搜到就叠加津贴下单；搜不到就直接用红包+商家券下单。`;
