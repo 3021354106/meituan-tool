@@ -18,8 +18,12 @@ const WECHAT_TOKEN = 'yichen2026';
 
 const SCHEME_TEMPLATE = 'imeituan://www.meituan.com/web?url=https%3A%2F%2Foffsiteact.meituan.com%2Fweb%2Fhoae%2Fcollection_waimai_v8%2Findex.html%3FrecallBizId%3DcpsH5Coupon%26bizId%3D0c3bfd35279b4140b3bd8ecbc41301d6%26mediumSrc1%3D0c3bfd35279b4140b3bd8ecbc41301d6%26scene%3DCPS_SELF_SRC%26pageSrc1%3DCPS_SELF_OUT_SRC_H5_LINK%26pageSrc2%3D0c3bfd35279b4140b3bd8ecbc41301d6%26pageSrc3%3Dcf43b6387dd545a58222aba9ae1d7a2d%26activityId%3D6%26mediaPvId%3Ddafkdsajffjafdfs%26mediaUserId%3D10086%26outActivityId%3D6%26hoaePageV%3D8%26p%3D554c02ac6c2a4108b162afc11bb6e6c6%26poi_id_str%3D{SHOP_ID}';
 
-const HONGBAO_H5_URL = 'https://click.meituan.com/t?t=1&c=2&p=y2Pp-bxzOzyq';
 const MEITUAN_APPID = 'wxde8ac0a21135c07d';
+
+// 🆕 你自己的推广参数
+const MY_BIZ_ID = '0c3bfd35279b4140b3bd8ecbc41301d6';
+const MY_P = '554c02ac6c2a4108b162afc11bb6e6c6';
+const MY_PAGE_SRC3 = 'cf43b6387dd545a58222aba9ae1d7a2d';
 
 function getBeijingTime() {
   const now = new Date();
@@ -43,11 +47,6 @@ async function logToProxy(record) {
 function extractShortCode(xcxUrl) {
   const parts = xcxUrl.split('/');
   return parts[parts.length - 1];
-}
-
-// 🆕 根据 poi_id_str 生成小程序路径（商家详情页）
-function buildMiniPath(shopId) {
-  return `packages/restaurant/restaurant/restaurant?poi_id_str=${shopId}`;
 }
 
 // ========== 短链接/长链接解析 ==========
@@ -190,7 +189,6 @@ app.post('/wechat', async (req, res) => {
     let mpLink = null;
 
     if (extracted.type === 'xcx') {
-      // 🆕 小程序链接：提取标识符生成 mp:// 链接
       const shortCode = extractShortCode(extracted.url);
       mpLink = `mp://${shortCode}`;
 
@@ -202,14 +200,11 @@ app.post('/wechat', async (req, res) => {
       const data = await resp.json();
       shopId = data.poiIdStr || null;
     } else {
-      // 🆕 短链接/长链接：解析后生成 weixin://dl/business/ 小程序唤起链接
       const resp = await fetch(`https://meituan-tool.onrender.com/api/resolve?url=${encodeURIComponent(extracted.url)}`);
       const data = await resp.json();
       shopId = data.shopId || null;
-
       if (shopId) {
-        const miniPath = buildMiniPath(shopId);
-        mpLink = `weixin://dl/business/?appid=${MEITUAN_APPID}&path=${encodeURIComponent(miniPath)}`;
+        mpLink = `weixin://dl/business/?appid=${MEITUAN_APPID}&path=${encodeURIComponent(`packages/restaurant/restaurant/restaurant?poi_id_str=${shopId}`)}`;
       }
     }
 
@@ -218,33 +213,36 @@ app.post('/wechat', async (req, res) => {
       return res.type('xml').send(reply);
     }
 
+    // ========== 🆕 用你自己的参数拼所有链接 ==========
     const displayName = '该商家';
-    const jumpUrl = SCHEME_TEMPLATE.replace('{SHOP_ID}', shopId);
-    const match = jumpUrl.match(/url=([^&]*)/);
-    const activityUrl = match ? decodeURIComponent(match[1]) : jumpUrl;
 
-    const hongbaoLink = HONGBAO_H5_URL;
+    // ① 跳转商家券（你的 v8 活动页）
+    const couponV8 = `https://offsiteact.meituan.com/web/hoae/collection_waimai_v8/index.html?recallBizId=cpsH5Coupon&bizId=${MY_BIZ_ID}&mediumSrc1=${MY_BIZ_ID}&scene=CPS_SELF_SRC&pageSrc1=CPS_SELF_OUT_SRC_H5_LINK&pageSrc2=${MY_BIZ_ID}&pageSrc3=${MY_PAGE_SRC3}&activityId=6&mediaPvId=dafkdsajffjafdfs&mediaUserId=10086&outActivityId=6&hoaePageV=8&p=${MY_P}&poi_id_str=${shopId}`;
 
-    const replyText = `✔ 美团外卖商家券匹配成功 ✔
+    // ② 二次领取（v6 活动页）
+    const couponV6 = `https://offsiteact.meituan.com/web/hoae/collection_waimai_v6/index.html?p=${MY_P}&poi_id_str=${shopId}`;
 
-🎫 ${displayName}已为您匹配到商家券!!
+    // ③ 搜索口令（固定链接，你提供的）
+    const searchLink = 'http://dpurl.cn/9w2CCsjz';
 
-🔥推荐按顺序领取，能叠加更省👇
+    // ④ 官方返现
+    const cashbackLink = `https://offsiteact.meituan.com/act/cps/promotion?p=1009519397064601600&utm_content=${MY_BIZ_ID}__${MY_PAGE_SRC3}&poi_id_str=${shopId}`;
 
-① 先领通用红包
-👉 <a href="${hongbaoLink}">点击领取通用红包</a>
+    const replyText = `🎫 【${displayName}】商家券已为您找到💡 每天金额大小不一样，建议每天来查一下哈
 
-② 再领商家隐藏券（可切号）
-👉 <a href="${activityUrl}">点击领取内部商家券</a>
+<a href="${couponV8}">跳转商家券</a>   <a href="${couponV6}">二次领取</a>
 
-③ 🟢 免登录入口
-👉 ${mpLink}
+🔥 美团20-10，28-15日常
+<a href="${searchLink}">👉 搜索口令 58784</a>
 
-④ 🟢 最后领津贴
-👉 ${mpLink}
+💰 美团官方返现👇
+#小程序://美团试吃官/UqGzCRvBFI0eb8j
 
-💡使用提示：
-搜索对应店铺，能搜到就叠加津贴下单；搜不到就直接用红包+商家券下单。`;
+<a href="${cashbackLink}">查询该商家是否有返现</a>
+
+🧠 <a href="weixin://bizmsgmenu?msgmenuid=1&msgmenucontent=保存记忆|${shopId}|${encodeURIComponent(displayName)}">收藏此店</a> | 📁 <a href="weixin://bizmsgmenu?msgmenuid=2&msgmenucontent=我的记忆">我的收藏</a>
+
+🥤 点完外卖记得美团搜索【小黄人周边】做任务拿免费瑞幸`;
 
     const reply = buildTextReply(fromUser, toUser, replyText);
     res.type('xml').send(reply);
