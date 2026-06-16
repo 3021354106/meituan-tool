@@ -1,6 +1,7 @@
 const express = require('express');
 const app = express();
 const crypto = require('crypto');
+const { get_Sign } = require('./mtgsig_16.js');
 
 app.use(express.json());
 app.use(express.text({ type: 'text/xml' }));
@@ -18,12 +19,15 @@ const WECHAT_TOKEN = 'yichen2026';
 
 const SCHEME_TEMPLATE = 'imeituan://www.meituan.com/web?url=https%3A%2F%2Foffsiteact.meituan.com%2Fweb%2Fhoae%2Fcollection_waimai_v8%2Findex.html%3FrecallBizId%3DcpsH5Coupon%26bizId%3D0c3bfd35279b4140b3bd8ecbc41301d6%26mediumSrc1%3D0c3bfd35279b4140b3bd8ecbc41301d6%26scene%3DCPS_SELF_SRC%26pageSrc1%3DCPS_SELF_OUT_SRC_H5_LINK%26pageSrc2%3D0c3bfd35279b4140b3bd8ecbc41301d6%26pageSrc3%3Dcf43b6387dd545a58222aba9ae1d7a2d%26activityId%3D6%26mediaPvId%3Ddafkdsajffjafdfs%26mediaUserId%3D10086%26outActivityId%3D6%26hoaePageV%3D8%26p%3D554c02ac6c2a4108b162afc11bb6e6c6%26poi_id_str%3D{SHOP_ID}';
 
+const HONGBAO_H5_URL = 'https://click.meituan.com/t?t=1&c=2&p=y2Pp-bxzOzyq';
 const MEITUAN_APPID = 'wxde8ac0a21135c07d';
 
-// 🆕 你自己的推广参数
-const MY_BIZ_ID = '0c3bfd35279b4140b3bd8ecbc41301d6';
-const MY_P = '554c02ac6c2a4108b162afc11bb6e6c6';
-const MY_PAGE_SRC3 = 'cf43b6387dd545a58222aba9ae1d7a2d';
+// 签名固定参数
+const SIGN_A3ID = 'xv605331y68x59yw1y9y0v1uxywy29w080v6y46608w97978z422049w';
+const SIGN_WXSTR = 'wx2c348cf579062e56';
+
+// 美团外卖小程序接口
+const MEITUAN_API = 'https://wx.waimai.meituan.com/weapp/v1/poi/food';
 
 function getBeijingTime() {
   const now = new Date();
@@ -43,7 +47,79 @@ async function logToProxy(record) {
   }
 }
 
-// 从小程序链接中提取最后一段标识符
+// 🆕 获取商家名和券金额
+async function getShopInfo(shopId) {
+  try {
+    const params = {
+      ui: '1856918819',
+      region_id: '1000429006',
+      region_version: '1779111775951',
+      yodaReady: 'wx',
+      csecappid: SIGN_WXSTR,
+      csecplatform: '3',
+      csecversionname: '9.99.2',
+      csecversion: '1.4.0'
+    };
+
+    const dataBody = {
+      wm_poi_id: '-100',
+      poi_id_str: shopId,
+      user_id: '1856918819',
+      userid: '1856918819',
+      wm_actual_latitude: '32007042',
+      wm_actual_longitude: '112128632',
+      wm_latitude: '32007042',
+      wm_longitude: '112128632',
+      platform: '13',
+      partner: '4',
+      sdkVersion: '3.16.0',
+      lch: '1000',
+      foodlist_uniform_mode: '1',
+      dynamic_mode: '1',
+      whole_render_dynamic: 'true',
+      campaign_type: '-1',
+      role_type: '0'
+    };
+
+    const fullUrl = MEITUAN_API + '?' + new URLSearchParams(params).toString();
+    const mtgsig = get_Sign('POST', fullUrl, dataBody, SIGN_A3ID, SIGN_WXSTR);
+
+    const resp = await fetch(fullUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'mtgsig': mtgsig,
+        'csecuuid': 'bca31650-f48a-4391-872a-5f3bbba29da9',
+        'uuid': 'bca31650-f48a-4391-872a-5f3bbba29da9',
+        'csecuserid': '1856918819',
+        'xweb_xhr': '1',
+        'wm-ctype': 'wxapp',
+        'Referer': 'https://servicewechat.com/wx2c348cf579062e56/1048/page-frame.html',
+        'Accept-Language': 'zh-CN,zh;q=0.9'
+      },
+      body: new URLSearchParams(dataBody).toString()
+    });
+
+    const result = await resp.json();
+
+    if (result.code === 0 && result.data?.poi_info) {
+      const shop = result.data.poi_info;
+      const name = shop.name || null;
+      // 券金额：优先取 fold_coupon_list 第一个
+      let couponAmount = null;
+      const foldList = shop.poi_coupon?.fold_coupon_list;
+      if (foldList && foldList.length > 0) {
+        couponAmount = foldList[0].coupon_value || foldList[0].coupon_amount || null;
+      }
+      return { name, couponAmount };
+    }
+    return { name: null, couponAmount: null };
+  } catch (e) {
+    console.error('[SHOP_INFO] 获取失败:', e.message);
+    return { name: null, couponAmount: null };
+  }
+}
+
 function extractShortCode(xcxUrl) {
   const parts = xcxUrl.split('/');
   return parts[parts.length - 1];
@@ -186,12 +262,8 @@ app.post('/wechat', async (req, res) => {
     }
 
     let shopId = null;
-    let mpLink = null;
 
     if (extracted.type === 'xcx') {
-      const shortCode = extractShortCode(extracted.url);
-      mpLink = `mp://${shortCode}`;
-
       const resp = await fetch('https://meituan-tool.onrender.com/api/xcx_parse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -203,9 +275,6 @@ app.post('/wechat', async (req, res) => {
       const resp = await fetch(`https://meituan-tool.onrender.com/api/resolve?url=${encodeURIComponent(extracted.url)}`);
       const data = await resp.json();
       shopId = data.shopId || null;
-      if (shopId) {
-        mpLink = `weixin://dl/business/?appid=${MEITUAN_APPID}&path=${encodeURIComponent(`packages/restaurant/restaurant/restaurant?poi_id_str=${shopId}`)}`;
-      }
     }
 
     if (!shopId) {
@@ -213,34 +282,31 @@ app.post('/wechat', async (req, res) => {
       return res.type('xml').send(reply);
     }
 
-    // ========== 🆕 用你自己的参数拼所有链接 ==========
-    const displayName = '该商家';
+    // 🆕 获取店名和券金额
+    const shopInfo = await getShopInfo(shopId);
+    const storeName = shopInfo.name || '该商家';
+    const couponAmount = shopInfo.couponAmount ? `${shopInfo.couponAmount}元` : '';
 
-    // ① 跳转商家券（你的 v8 活动页）
-    const couponV8 = `https://offsiteact.meituan.com/web/hoae/collection_waimai_v8/index.html?recallBizId=cpsH5Coupon&bizId=${MY_BIZ_ID}&mediumSrc1=${MY_BIZ_ID}&scene=CPS_SELF_SRC&pageSrc1=CPS_SELF_OUT_SRC_H5_LINK&pageSrc2=${MY_BIZ_ID}&pageSrc3=${MY_PAGE_SRC3}&activityId=6&mediaPvId=dafkdsajffjafdfs&mediaUserId=10086&outActivityId=6&hoaePageV=8&p=${MY_P}&poi_id_str=${shopId}`;
+    const jumpUrl = SCHEME_TEMPLATE.replace('{SHOP_ID}', shopId);
+    const match = jumpUrl.match(/url=([^&]*)/);
+    const activityUrl = match ? decodeURIComponent(match[1]) : jumpUrl;
 
-    // ② 二次领取（v6 活动页）
-    const couponV6 = `https://offsiteact.meituan.com/web/hoae/collection_waimai_v6/index.html?p=${MY_P}&poi_id_str=${shopId}`;
+    const hongbaoLink = HONGBAO_H5_URL;
 
-    // ③ 搜索口令（固定链接，你提供的）
-    const searchLink = 'http://dpurl.cn/9w2CCsjz';
+    // 生成 mp:// 免登录链接
+    const mpLink = extracted.type === 'xcx' ? `mp://${extractShortCode(extracted.url)}` : '';
 
-    // ④ 官方返现
-    const cashbackLink = `https://offsiteact.meituan.com/act/cps/promotion?p=1009519397064601600&utm_content=${MY_BIZ_ID}__${MY_PAGE_SRC3}&poi_id_str=${shopId}`;
+    const replyText = `🎫 【${storeName}】商家券已为您找到${couponAmount ? ' ' + couponAmount : ''}💡 每天金额大小不一样，建议每天来查一下哈
 
-    const replyText = `🎫 【${displayName}】商家券已为您找到💡 每天金额大小不一样，建议每天来查一下哈
-
-<a href="${couponV8}">跳转商家券</a>   <a href="${couponV6}">二次领取</a>
+<a href="${activityUrl}">跳转商家券</a>
 
 🔥 美团20-10，28-15日常
-<a href="${searchLink}">👉 搜索口令 58784</a>
+<a href="${hongbaoLink}">👉 点击领取通用红包</a>
 
 💰 美团官方返现👇
 #小程序://美团试吃官/UqGzCRvBFI0eb8j
 
-<a href="${cashbackLink}">查询该商家是否有返现</a>
-
-🧠 <a href="weixin://bizmsgmenu?msgmenuid=1&msgmenucontent=保存记忆|${shopId}|${encodeURIComponent(displayName)}">收藏此店</a> | 📁 <a href="weixin://bizmsgmenu?msgmenuid=2&msgmenucontent=我的记忆">我的收藏</a>
+🧠 <a href="weixin://bizmsgmenu?msgmenuid=1&msgmenucontent=保存记忆|${shopId}|${encodeURIComponent(storeName)}">收藏此店</a> | 📁 <a href="weixin://bizmsgmenu?msgmenuid=2&msgmenucontent=我的记忆">我的收藏</a>
 
 🥤 点完外卖记得美团搜索【小黄人周边】做任务拿免费瑞幸`;
 
