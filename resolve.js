@@ -22,11 +22,8 @@ const SCHEME_TEMPLATE = 'imeituan://www.meituan.com/web?url=https%3A%2F%2Foffsit
 const HONGBAO_H5_URL = 'https://click.meituan.com/t?t=1&c=2&p=y2Pp-bxzOzyq';
 const MEITUAN_APPID = 'wxde8ac0a21135c07d';
 
-// 签名固定参数
 const SIGN_A3ID = 'xv605331y68x59yw1y9y0v1uxywy29w080v6y46608w97978z422049w';
 const SIGN_WXSTR = 'wx2c348cf579062e56';
-
-// 美团外卖小程序接口
 const MEITUAN_API = 'https://wx.waimai.meituan.com/weapp/v1/poi/food';
 
 function getBeijingTime() {
@@ -47,7 +44,7 @@ async function logToProxy(record) {
   }
 }
 
-// 🆕 获取商家名和券金额
+// 🆕 获取商家名和券金额（增加完整的请求头和 Cookie 模拟）
 async function getShopInfo(shopId) {
   try {
     const params = {
@@ -60,6 +57,13 @@ async function getShopInfo(shopId) {
       csecversionname: '9.99.2',
       csecversion: '1.4.0'
     };
+
+    // 生成随机 UUID
+    const uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
 
     const dataBody = {
       wm_poi_id: '-100',
@@ -78,39 +82,56 @@ async function getShopInfo(shopId) {
       dynamic_mode: '1',
       whole_render_dynamic: 'true',
       campaign_type: '-1',
-      role_type: '0'
+      role_type: '0',
+      wm_uuid: uuid,
+      uuid: uuid,
+      sessionId: Math.random().toString(36).substring(2, 8).toUpperCase()
     };
 
     const fullUrl = MEITUAN_API + '?' + new URLSearchParams(params).toString();
     const mtgsig = get_Sign('POST', fullUrl, dataBody, SIGN_A3ID, SIGN_WXSTR);
+
+    console.log(`[SHOP_INFO] 请求美团接口, shopId=${shopId}`);
 
     const resp = await fetch(fullUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'mtgsig': mtgsig,
-        'csecuuid': 'bca31650-f48a-4391-872a-5f3bbba29da9',
-        'uuid': 'bca31650-f48a-4391-872a-5f3bbba29da9',
+        'csecuuid': uuid,
+        'uuid': uuid,
         'csecuserid': '1856918819',
         'xweb_xhr': '1',
         'wm-ctype': 'wxapp',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI MiniProgramEnv/Windows WindowsWechat/WMPF',
         'Referer': 'https://servicewechat.com/wx2c348cf579062e56/1048/page-frame.html',
-        'Accept-Language': 'zh-CN,zh;q=0.9'
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+        'Cookie': `userId=1856918819; mt_city=420600; wm_uuid=${uuid}; wm_latitude=32007042; wm_longitude=112128632`
       },
       body: new URLSearchParams(dataBody).toString()
     });
 
-    const result = await resp.json();
+    const text = await resp.text();
+    console.log(`[SHOP_INFO] 响应状态: ${resp.status}, 内容长度: ${text.length}`);
+    console.log(`[SHOP_INFO] 原始响应(前500字): ${text.substring(0, 500)}`);
+
+    let result;
+    try {
+      result = JSON.parse(text);
+    } catch (e) {
+      console.error(`[SHOP_INFO] 不是有效JSON，返回了HTML或其他格式`);
+      return { name: null, couponAmount: null };
+    }
 
     if (result.code === 0 && result.data?.poi_info) {
       const shop = result.data.poi_info;
       const name = shop.name || null;
-      // 券金额：优先取 fold_coupon_list 第一个
       let couponAmount = null;
       const foldList = shop.poi_coupon?.fold_coupon_list;
       if (foldList && foldList.length > 0) {
         couponAmount = foldList[0].coupon_value || foldList[0].coupon_amount || null;
       }
+      console.log(`[SHOP_INFO] 成功: ${name}, 券: ${couponAmount}`);
       return { name, couponAmount };
     }
     return { name: null, couponAmount: null };
@@ -292,9 +313,6 @@ app.post('/wechat', async (req, res) => {
     const activityUrl = match ? decodeURIComponent(match[1]) : jumpUrl;
 
     const hongbaoLink = HONGBAO_H5_URL;
-
-    // 生成 mp:// 免登录链接
-    const mpLink = extracted.type === 'xcx' ? `mp://${extractShortCode(extracted.url)}` : '';
 
     const replyText = `🎫 【${storeName}】商家券已为您找到${couponAmount ? ' ' + couponAmount : ''}💡 每天金额大小不一样，建议每天来查一下哈
 
