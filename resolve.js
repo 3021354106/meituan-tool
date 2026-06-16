@@ -1,7 +1,6 @@
 const express = require('express');
 const app = express();
 const crypto = require('crypto');
-const { get_Sign } = require('./mtgsig_16.js');
 
 app.use(express.json());
 app.use(express.text({ type: 'text/xml' }));
@@ -20,11 +19,6 @@ const WECHAT_TOKEN = 'yichen2026';
 const SCHEME_TEMPLATE = 'imeituan://www.meituan.com/web?url=https%3A%2F%2Foffsiteact.meituan.com%2Fweb%2Fhoae%2Fcollection_waimai_v8%2Findex.html%3FrecallBizId%3DcpsH5Coupon%26bizId%3D0c3bfd35279b4140b3bd8ecbc41301d6%26mediumSrc1%3D0c3bfd35279b4140b3bd8ecbc41301d6%26scene%3DCPS_SELF_SRC%26pageSrc1%3DCPS_SELF_OUT_SRC_H5_LINK%26pageSrc2%3D0c3bfd35279b4140b3bd8ecbc41301d6%26pageSrc3%3Dcf43b6387dd545a58222aba9ae1d7a2d%26activityId%3D6%26mediaPvId%3Ddafkdsajffjafdfs%26mediaUserId%3D10086%26outActivityId%3D6%26hoaePageV%3D8%26p%3D554c02ac6c2a4108b162afc11bb6e6c6%26poi_id_str%3D{SHOP_ID}';
 
 const HONGBAO_H5_URL = 'https://click.meituan.com/t?t=1&c=2&p=y2Pp-bxzOzyq';
-const MEITUAN_APPID = 'wxde8ac0a21135c07d';
-
-const SIGN_A3ID = 'xv605331y68x59yw1y9y0v1uxywy29w080v6y46608w97978z422049w';
-const SIGN_WXSTR = 'wx2c348cf579062e56';
-const MEITUAN_API = 'https://wx.waimai.meituan.com/weapp/v1/poi/food';
 
 function getBeijingTime() {
   const now = new Date();
@@ -44,96 +38,21 @@ async function logToProxy(record) {
   }
 }
 
-// 🆕 获取商家名和券金额（增加完整的请求头和 Cookie 模拟）
+// 🆕 通过国内代理获取商家名和券金额
 async function getShopInfo(shopId) {
   try {
-    const params = {
-      ui: '1856918819',
-      region_id: '1000429006',
-      region_version: '1779111775951',
-      yodaReady: 'wx',
-      csecappid: SIGN_WXSTR,
-      csecplatform: '3',
-      csecversionname: '9.99.2',
-      csecversion: '1.4.0'
-    };
-
-    // 生成随机 UUID
-    const uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
-
-    const dataBody = {
-      wm_poi_id: '-100',
-      poi_id_str: shopId,
-      user_id: '1856918819',
-      userid: '1856918819',
-      wm_actual_latitude: '32007042',
-      wm_actual_longitude: '112128632',
-      wm_latitude: '32007042',
-      wm_longitude: '112128632',
-      platform: '13',
-      partner: '4',
-      sdkVersion: '3.16.0',
-      lch: '1000',
-      foodlist_uniform_mode: '1',
-      dynamic_mode: '1',
-      whole_render_dynamic: 'true',
-      campaign_type: '-1',
-      role_type: '0',
-      wm_uuid: uuid,
-      uuid: uuid,
-      sessionId: Math.random().toString(36).substring(2, 8).toUpperCase()
-    };
-
-    const fullUrl = MEITUAN_API + '?' + new URLSearchParams(params).toString();
-    const mtgsig = get_Sign('POST', fullUrl, dataBody, SIGN_A3ID, SIGN_WXSTR);
-
-    console.log(`[SHOP_INFO] 请求美团接口, shopId=${shopId}`);
-
-    const resp = await fetch(fullUrl, {
+    console.log(`[SHOP_INFO] 通过代理请求, shopId=${shopId}`);
+    const resp = await fetch('https://proxy.yc22.cn', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'mtgsig': mtgsig,
-        'csecuuid': uuid,
-        'uuid': uuid,
-        'csecuserid': '1856918819',
-        'xweb_xhr': '1',
-        'wm-ctype': 'wxapp',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI MiniProgramEnv/Windows WindowsWechat/WMPF',
-        'Referer': 'https://servicewechat.com/wx2c348cf579062e56/1048/page-frame.html',
-        'Accept-Language': 'zh-CN,zh;q=0.9',
-        'Cookie': `userId=1856918819; mt_city=420600; wm_uuid=${uuid}; wm_latitude=32007042; wm_longitude=112128632`
-      },
-      body: new URLSearchParams(dataBody).toString()
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'get_shop_info', shop_id: shopId })
     });
-
-    const text = await resp.text();
-    console.log(`[SHOP_INFO] 响应状态: ${resp.status}, 内容长度: ${text.length}`);
-    console.log(`[SHOP_INFO] 原始响应(前500字): ${text.substring(0, 500)}`);
-
-    let result;
-    try {
-      result = JSON.parse(text);
-    } catch (e) {
-      console.error(`[SHOP_INFO] 不是有效JSON，返回了HTML或其他格式`);
-      return { name: null, couponAmount: null };
+    const data = await resp.json();
+    if (data.name) {
+      console.log(`[SHOP_INFO] 成功: ${data.name}, 券: ${data.couponAmount}`);
+      return { name: data.name, couponAmount: data.couponAmount || null };
     }
-
-    if (result.code === 0 && result.data?.poi_info) {
-      const shop = result.data.poi_info;
-      const name = shop.name || null;
-      let couponAmount = null;
-      const foldList = shop.poi_coupon?.fold_coupon_list;
-      if (foldList && foldList.length > 0) {
-        couponAmount = foldList[0].coupon_value || foldList[0].coupon_amount || null;
-      }
-      console.log(`[SHOP_INFO] 成功: ${name}, 券: ${couponAmount}`);
-      return { name, couponAmount };
-    }
+    console.log(`[SHOP_INFO] 代理返回异常: ${JSON.stringify(data)}`);
     return { name: null, couponAmount: null };
   } catch (e) {
     console.error('[SHOP_INFO] 获取失败:', e.message);
